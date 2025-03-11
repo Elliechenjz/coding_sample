@@ -1,0 +1,532 @@
+---
+title: "Market Shaping Accelerator Technical Assessment"
+author: "[Ellie Chen]"
+date: "09/2024"
+output:
+  pdf_document: default
+  word_document: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+***
+Dear Professionals,
+
+Thank you for reviewing my R coding sample submission. This code was originally developed as part of a technical assessment for a pre-doctoral position I applied for last year. I believe it effectively demonstrates my proficiency in R and my ability to conduct data cleaning, microeconomic modelling and analysis with R. 
+
+Best regards,
+Ellie Chen
+
+****
+**Thank you for reviewing my technical assessment.**
+
+This submission consists of a knitted pdf. (this file, knitted from
+.Rmd) and the .Rmd coding file.
+
+Section 1 includes direct answers for three discussion questions,
+section 2 presents the model design and assumptions for Question 1,
+Section 3 presents the annotated replicable code for the estimation
+result and model deployment of Question 1.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, na.blank = TRUE)
+
+# For replicability, package installation code is provided, please feel free to delete them
+install.packages("tidyverse")
+install.packages("tidyr")
+install.packages("stargazer")     
+install.packages("kableExtra")     
+install.packages("haven")   
+install.packages("lubridate")   
+install.packages("data.table")    
+install.packages("readxl")       
+install.packages("dplyr")         
+install.packages("lmtest")      
+install.packages("sandwich")     
+install.packages("ltm")     
+
+# optional for PDF output
+install.packages("tinytex")
+tinytex::install_tinytex()  
+
+library(tidyverse)
+library(tidyr)
+library(stargazer)  
+library(haven)
+library(lubridate)
+library(data.table)
+library(readxl)
+library(dplyr)
+library(lmtest)
+library(sandwich)
+library(ltm)
+
+setwd("/Users/elliechen/Downloads/MSA Data test") 
+# setwd("PUT YOUR PATH")
+VAC_uptake <- read.csv("COVID-19_Vaccinations_in_the_United_States_Jurisdiction.csv")
+wave_deaths <- read.csv("wave_deaths.csv")
+```
+
+## 1. Discussion Question Answers
+
+1.  **What is the social value of an early variant detection system
+    estimated by your model?**
+
+    *Answer:*
+
+    The estimated social value is around 1.278 trillion dollars
+    (\$1,277,849,232,078.8)
+
+    *Please see Section 2 and Section 3 for model , annotated code and
+    estimation process.*
+
+2.  **Explain to a policymaker why vaccines are underinvested in by
+    commercial markets (max 100 words).**
+
+    *Answer:*
+
+    Vaccines generate positive externalities, immunizing one person
+    benefits others by reducing disease spread, but companies can't
+    capture this added value for various reasons. Primarily, societal
+    expectations and limited purchasing power of public and private
+    sectors demand for low prices to ensure widespread access, which
+    conflicts with the high R&D costs and a patent system that rewards
+    only a few innovators with high prices and restricted quantities.
+    Additionally, innovation spillovers mean that firms investing in
+    vaccine development may not fully benefit from their discoveries, as
+    companies with greater manufacturing capacity ultimately capture the
+    market, thus the difficulties in coupling research and manufacturing
+    further weakening investment incentives.
+
+3.  **The U.S. government wants to incentivize this technological
+    innovation by offering a winner-take-all prize to the first firm
+    that is able to successfully develop the technology (no additional
+    research grants or funding is given). How big would the prize need
+    to be to incentivize firms to invest in R&D to develop this
+    technology under the following assumptions?**
+
+    **a. It will cost each firm \$100 million in R&D to attempt to make
+    this technology**
+
+    **b. Each firm that invests in R&D still might fail to create a
+    successful technology.**
+
+    **We want to attract firms that have at least a 40% probability of
+    successful**
+
+    **innovation.**
+
+    **c. All firms are expected to have the same innovation development
+    timeline; there is**
+
+    **no prior knowledge of which firm will be the fastest.**
+
+    **d. We expect 10 firms will be competing.**
+
+    **e. Please include a description of how you arrived at your answer
+    and any**
+
+    **additional assumptions you made.**
+
+    *Answer:*
+
+    The price should be at least 1 billion to incentive firms to invest
+    in R&D. This government investment will be cost effective given the
+    projected return of social value.
+
+    Rationale: Given that 10 firms will be competing, each firm's
+    effective probabiity of being the first successful firm is 10%. The
+    expected return should at least offset the R&D cost for a firm to
+    participate.
+    $\frac{1}{10} \cdot \text{Prize} \geq 100\text{million}$,
+    $\text{Prize} \geq 1 \text{ billion}$, ignoring a small probability
+    (0.04%) that no one can succeed.
+
+    Although we aim to **attract** only firms with at least a 40%
+    probability of success, this is challenging since success
+    probabilities are private information. By setting a high prize,
+    firms with higher internal probabilities of success are more likely
+    to self-select into the competition. In an ideal situation, this
+    natural self-selection process should attract the top 10 firms with
+    the highest chances of success, even though we cannot directly
+    verify that each firm meets the 40% threshold.
+
+    Without constraints on innovation timelines, and assuming a shared
+    timeline for all firms, we cannot guarantee that every competing
+    firm will have a 40% success rate, given the unknown distribution of
+    success rates across the industry. However, the high prize value
+    will likely incentivise the most capable firms to participate,
+    increasing the likelihood of a successful outcome.
+
+    In the real world, it's worth considering how to gather more
+    information on success rate of different level of candidates, and
+    the differing R&D timeline and capacity trade-off. Given the social
+    value of the public good, it's worth providing high incentive to
+    pull the best candidates in the market.
+
+## 2. Model Setup
+
+#### 2.1 Specified parameters
+
+```{=tex}
+\begin{table}[h!]
+\centering
+\caption{Model parameters}
+\begin{tabular}{|p{3.5cm}|p{8cm}|p{3cm}|}  % Adjust column widths as needed
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Baseline value} \\
+\hline
+Value of statistical life, \( VL \) & Economic value used to monetize benefit of avoiding a fatality & \$13.5 million \\
+\hline
+Vaccine efficacy, \( e \) & Reduction in mortality risk for immunized person & 90\% \\
+\hline
+Duration of the pandemic threat, \( d \) & The given duration of the threat of future COVID-19 & 260 weeks \\
+\hline
+Weekly Social discount rate, \( r \) & The discount rate to put a present value on the benefits that will occur in a later date  & 0.077\% \\
+\hline
+\end{tabular}
+\end{table}
+```
+#### 2.2 Number of deaths as the Delta variant
+
+Given the data set, the mortality profile of each wave is the same as
+the number of deaths as the Delta variant. By observing and plotting the
+distribution, model each wave's mortality profile as a Gaussian curve:
+$$D(t) = \alpha \cdot e^{-\frac{(t - \mu)^2}{2c^2}}$$
+
+Where$D(t)$ is the number of death in week t, $\alpha$ denotes the
+number of deaths during the wave, $\mu$ is the peak week of the wave, c
+controls the spread of the wave.
+
+#### 2.3 Vaccine uptake<br>
+
+By observing and plotting the distribution, fit a polynomial model to
+historical vaccine uptake data to estimate the national cumulative
+percentage of the population vaccinated:
+
+$$V(t) = \beta_0 + \beta_1 t + \beta_2 t^2$$
+
+where $V(t)$ represents the cumulative vaccination rate at week $t$.
+
+#### 2.4 Adjusted death
+
+1.  Scenario A (Status quo)
+
+    Given that new booster vaccines take 10 weeks to be developed and
+    approved. The administration of the variant booster vaccine begins 6
+    weeks after each wave starts and therefore mortality rate
+    adjustment. The weekly deaths in scenario A is defined as:\
+
+$$
+D_A(t) = 
+\begin{cases} 
+      D(t) & \text{if } t < \text{start week} + 6 \\ \\
+      D(t) \times \left(1 - V(t - \text{start week} - 6) \times 0.9\right) & \text{if } t \geq \text{start week} + 6 
+\end{cases}
+$$
+
+2.  Scenario B (Early warning):
+
+    The administration of the variant booster vaccine adjustment begins
+    at the beginning of each wave starts. By the time each wave starts,
+    the vaccine would have been administrated for 2 weeks.
+
+$$D_B(t) = D(t) \times (1 - V(t - \text{start week} + 2) \times
+e)$$
+
+$e$ denotes the immediate vaccine efficacy at preventing mortality.
+
+3.  Averted Death
+
+    The difference in number of deaths each week between scenario A and
+    B for each wave.
+
+    $$\Delta D(t) = D_A(t) - D_B(t) $$
+
+#### 2.5 The monetary value of averted death
+
+Discount each week's social value of averted death to the week t,
+
+$$ PV(t) = \Delta D(t) \times VL \times \frac{1}{(1 + r)^t}$$
+
+$$SV(t, w_t) = \sum_{\text{w}} \sum_{t_w} PV(t)$$
+
+The $PV(t)$ denotes the difference in the discounted social value of the
+deaths between scenario A and B. $SV(t, w_t)$ denotes the social value
+as a function of $t$ and waves $w$. $r$ is the weekly discount rate of
+social value. $VL$ denotes social value of the death.
+
+## 3. Coding
+
+Please see the annotated code below for the estimation of the social
+value of an early variant detection system.
+
+Fit Deaths waves into Normal Distribution model
+
+```{r warning=FALSE}
+names(wave_deaths) <- c("t", "D")
+gaussian_model <- nls(
+  D ~ a * exp(-0.5 * ((t - u) / c)^2),
+  data = wave_deaths,
+  start = list(a = max(wave_deaths$D), u = mean(wave_deaths$t), c = sd(wave_deaths$t))
+)
+
+# Summary of the model to see the parameter estimates
+summary(gaussian_model) 
+
+# Extract parameters
+params <- coef(gaussian_model)
+a <- params["a"]
+u <- params["u"]
+c <- params["c"]
+
+wave_deaths$fitted_D <- a * exp(-0.5 * ((wave_deaths$t - u) / c)^2)
+
+t_smooth <- seq(min(wave_deaths$t), max(wave_deaths$t), length.out = 100)
+fitted_D_smooth <- a * exp(-0.5 * ((t_smooth - u) / c)^2)
+smooth_curve <- data.frame(t = t_smooth, D = fitted_D_smooth)
+
+# Visualize the fit
+ggplot() +
+  geom_point(data = wave_deaths, aes(x = t, y = D), color = "steelblue", size = 2) +  
+  geom_line(data = smooth_curve, aes(x = t, y = D), color = "firebrick", size = 1) +  
+  theme_classic() +
+    theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_line(color = "grey85", linetype = "dashed"),
+    panel.grid.major.x = element_line(color = "grey95"),
+    axis.text.x = element_text(size = 9)
+  ) +
+  scale_x_continuous(breaks = seq(0, 15, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 14000, by = 2000)) +
+  labs(title = "Gaussian Model Fit for Deaths Profile by Week",
+       x = "Week - t",
+       y = "Deaths - D(t)") 
+```
+
+3.  Fit the National Vaccine uptake rate V(t) to a Polynomial Regression
+    Model - V(t)
+
+    Using September 22, 2021, as **Day 1** of booster administration,
+    examining the first 17 weeks of national vaccine uptake and fit the
+    data to a polynomial regression model to capture the trend.
+
+    The dataset's `Location` variable includes states, territories, and
+    federal entities, raising concerns about potential double counting.
+    By selecting a date when all entities had data on additional dose
+    rates, I calculated an accumulated total population of over 420
+    million, which is clearly incorrect, as the U.S. population
+    (including only the 50 states and the District of Columbia) is
+    slightly over 340 million.
+
+    To address this, I excluded entries where `Location` is "US" since
+    its inclusion resulted in an inflated total. After these
+    adjustments, the dataset reflects a population of 224,506,700, which
+    I will use as the population base represented in the CDC data. This
+    adjusted population is consistent with the sum of all 50 states,
+    possibly including other territories, supporting the assumption that
+    the CDC data represents this population. I assume that the weekly
+    U.S. death toll provided in `wave_death.csv` is based on the same
+    population coverage as the CDC data, ensuring a consistent baseline
+    for calculating national uptake rates.
+
+    If more time were available, I would explore further to validate
+    this assumption and refine the approach.
+
+    Finally, plot the vaccine uptake accumulated trend, providing a
+    visual representation of the polynomial fit.
+
+```{r}
+ 
+VAC_uptake$Date <- mdy(VAC_uptake$Date) 
+start_date <- as.Date("2021-09-22")
+end_date <- start_date + 118  # 119 days including the start date
+us_states <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", 
+               "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", 
+               "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", 
+               "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", 
+               "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY")
+
+
+VAC_uptake_filtered <- VAC_uptake %>%
+  dplyr::select(Date, Location, Additional_Doses, Additional_Doses_Vax_Pct) %>% 
+  dplyr::filter(Date >= start_date & Date <= end_date) %>% 
+  mutate(
+    Additional_Doses_Vax_Pct = na_if(Additional_Doses_Vax_Pct, 0),
+    Additional_Doses = na_if(Additional_Doses, 0)
+  ) 
+
+
+population_50 <- VAC_uptake %>% 
+  dplyr::select(Date, Location, Additional_Doses, Additional_Doses_Vax_Pct) %>% 
+  filter(Date == as.Date("2022-4-28"))%>% 
+  dplyr::filter(Location %in% us_states) %>% 
+  mutate(popu = Additional_Doses/Additional_Doses_Vax_Pct) %>% 
+  summarize(n = sum(popu))
+
+view(population_50)  # 215143300
+
+population_employed <- VAC_uptake %>% 
+  dplyr::select(Date, Location, Additional_Doses, Additional_Doses_Vax_Pct) %>% 
+  filter(Date == as.Date("2022-4-28"))%>% 
+  dplyr::filter(Location != "US") %>% 
+  mutate(popu = Additional_Doses/Additional_Doses_Vax_Pct) %>% 
+  summarize(n = sum(popu))
+
+view(population_employed) #224506700
+
+# compute the national level weekly accumulative vaccine uptake rate 
+V_t_demo <- VAC_uptake_filtered %>%
+  arrange(Location) %>% 
+  group_by(Date) %>%
+  mutate(National_Population = 224506700) %>%
+  summarize(
+    National_Additional_Doses = sum(Additional_Doses, na.rm = TRUE),  
+    National_Population = mean(National_Population, na.rm = TRUE),
+    National_Additional_doses_pct = National_Additional_Doses / National_Population ) %>%
+  mutate(week_of_admin = floor((as.numeric(Date - as.Date("2021-09-22")) / 7)) + 1) %>%
+  group_by(week_of_admin) %>%
+  summarize(
+    weekly_national_additional_doses_pct = mean(National_Additional_doses_pct, na.rm = TRUE),
+    National_Population = mean(National_Population)) 
+
+
+V_t <- lm(weekly_national_additional_doses_pct ~ poly(week_of_admin, 2, raw = TRUE), data = V_t_demo)
+
+# Visualize the fit
+V_t_demo2 <- V_t_demo %>%
+  mutate(fitted_vt = predict(V_t, newdata = V_t_demo))
+
+ggplot(V_t_demo2, aes(x = week_of_admin, y = weekly_national_additional_doses_pct)) +
+  geom_point(color = "steelblue", size = 2) +  
+  geom_line(aes(y = fitted_vt), color = "firebrick", size = 1) +  # Fitted curve
+  labs(title = "Regression Fit for Cumulative Vaccine Uptake - V(t)",
+       x = "Week - t",
+       y = "Cumulative Vaccine Uptake - V(t)") +
+   theme_classic() +
+    theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_line(color = "grey85", linetype = "dashed"),
+    panel.grid.major.x = element_line(color = "grey95"),
+    axis.text.x = element_text(size = 9)
+  ) +
+  scale_x_continuous(breaks = seq(0, 18, by = 1)) 
+
+```
+
+Plot the weekly deaths by Scenario A and B t o visualize the difference
+
+```{r}
+
+D_function <- function(t) {a * exp(-0.5 * ((t - u) / c)^2)}
+
+v_function <- function(t) {predict(V_t, 
+                                   newdata = data.frame(week_of_admin = t))}
+# Define time range
+time_range <- 1:max(wave_deaths$t)
+
+
+
+# Scenario A: status quo
+D_A <- function(t) {
+  if (t < 6) {
+    D_function(t)  # No adjustment before week 6
+  } else {
+    D_function(t) * (1 - v_function(t - 6) * 0.9)  # the rate of unprotected population become less
+  }
+}
+
+accumulated_deaths_A <- sum(sapply(time_range, D_A))
+
+# Scenario B: early-warning
+D_B <- function(t) {
+   D_function(t) * (1 - v_function(t + 2) * 0.9) # the rate of unprotected population become less
+  }
+
+accumulated_deaths_B <- sum(sapply(time_range, D_B))
+
+scenario_data <- data.frame(
+  t = time_range,
+  death_scenario_A = sapply(time_range, D_A),
+  death_scenario_B = sapply(time_range, D_B)
+)
+
+# Plot deaths for Scenario A and Scenario B
+ggplot(scenario_data, aes(x = t)) +
+  geom_smooth(aes(y = death_scenario_A, color = "A: Status quo"), size = 1) +
+  geom_smooth(aes(y = death_scenario_B, color = "B: Early-warning"), size = 1) +
+  labs(title = "Weekly Deaths by Scenario (A vs. B)",
+       x = "Week (t)",
+       y = "Deaths",
+       color = "Scenario") +
+  scale_color_manual(values = c("A: Status quo" = "steelblue", "B: Early-warning" = "firebrick")) +
+  theme_classic() +
+    theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_line(color = "grey85", linetype = "dashed"),
+    panel.grid.major.x = element_line(color = "grey95"),
+    axis.text.x = element_text(size = 9)
+  ) +
+  scale_x_continuous(breaks = seq(0, 17, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 14000, by = 2000)) 
+
+```
+
+Finally, deployed the model in the 5-year time horizon, apply the weekly
+discount rate and compute the social value of the whole thing.
+
+```{r}
+# Constants
+VL <- 13.5e6  # Value of a statistical life, $13.5 million
+discount_rate <- 0.00077  # Weekly discount rate of 0.077%
+wave_start_weeks <- c(40, 82, 130, 205)  # Start weeks for each wave --> flexible input
+time_horizon <- 260  # 5 years
+
+# Gaussian mortality function for each wave
+D_function <- function(t) {
+  params <- coef(gaussian_model)  # Extract parameters 
+  a <- params["a"]
+  u <- params["u"]
+  c <- params["c"]
+  a * exp(-0.5 * ((t - u) / c)^2)
+}
+
+# vaccine uptake function (fitted model V_t from chunks before)
+v_function <- function(t) {
+  predict(V_t, newdata = data.frame(week_of_admin = t))
+}
+
+# Scenario A: Status Quo (no early warning, start administrate vaccine 6 weeks after the observed increase)
+D_A <- function(t, start_week) {
+  if (t < start_week + 6) {
+    D_function(t - start_week) 
+  } else {
+    D_function(t - start_week) * (1 - v_function(t - start_week - 6) * 0.9)
+  }
+}
+
+# Scenario B: Early-Warning (starts administration of vaccine 2 weeks before the observed increase)
+D_B <- function(t, start_week) {
+    D_function(t - start_week) * (1 - v_function(t - start_week + 2) * 0.9)
+  }
+
+calculate_wave_value <- function(start_week) {
+  # define time_range, applying 5-year horizon as a limit
+  time_range <- start_week:min(time_horizon, start_week + 15) 
+  averted_deaths <- sapply(time_range, function(t) D_A(t, start_week) - D_B(t, start_week))
+
+  # social value of averted deaths with discounting
+  social_value <- sapply(time_range, function(t) {
+    V_t <- averted_deaths[t - start_week + 1] * VL
+    PV_t <- V_t / ((1 + discount_rate)^t)
+    return(PV_t)
+  })
+  sum(social_value, na.rm = TRUE)
+}
+
+total_social_value <- sum(sapply(wave_start_weeks, calculate_wave_value))
+
+# finally... we have  
+print(paste("Total Social Value of an Early Variant Detection System Over 5 Years:", total_social_value))
+
+```
